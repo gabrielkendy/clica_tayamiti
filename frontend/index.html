@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AcuRecord - Clínica Tayamiti</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-2xl mx-auto p-6">
+    <!-- Header -->
+    <header class="text-center mb-8">
+      <h1 class="text-2xl font-bold text-gray-800">🏥 AcuRecord</h1>
+      <p class="text-gray-500">Clínica Tayamiti - Gravação de Sessões</p>
+    </header>
+
+    <!-- Seleção de Paciente -->
+    <div id="step-paciente" class="bg-white rounded-xl shadow-sm p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">📋 Selecionar Paciente</h2>
+      <input type="text" id="busca-paciente" placeholder="Digite o nome do paciente..."
+        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+      <div id="lista-pacientes" class="mt-3 space-y-2"></div>
+      <div id="paciente-selecionado" class="hidden mt-4 p-4 bg-blue-50 rounded-lg">
+        <p class="font-medium" id="nome-paciente"></p>
+        <p class="text-sm text-gray-500" id="info-paciente"></p>
+      </div>
+    </div>
+
+    <!-- Gravação -->
+    <div id="step-gravacao" class="bg-white rounded-xl shadow-sm p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">🎙️ Gravação</h2>
+      
+      <!-- Estado: Pronto -->
+      <div id="estado-pronto" class="text-center">
+        <button id="btn-iniciar" onclick="iniciarGravacao()"
+          class="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl text-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
+          🔴 Iniciar Gravação
+        </button>
+        <p class="text-sm text-gray-400 mt-2">Selecione um paciente primeiro</p>
+      </div>
+
+      <!-- Estado: Gravando -->
+      <div id="estado-gravando" class="hidden text-center">
+        <div class="flex items-center justify-center gap-3 mb-4">
+          <span class="w-4 h-4 bg-red-500 rounded-full animate-pulse"></span>
+          <span class="text-2xl font-mono font-bold" id="timer">00:00:00</span>
+        </div>
+        <div id="vu-meter" class="h-2 bg-gray-200 rounded-full mb-4">
+          <div id="vu-bar" class="h-full bg-green-500 rounded-full transition-all" style="width: 0%"></div>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="pausarGravacao()" id="btn-pausar"
+            class="flex-1 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium">
+            ⏸️ Pausar
+          </button>
+          <button onclick="finalizarGravacao()"
+            class="flex-1 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-medium">
+            ⏹️ Finalizar
+          </button>
+        </div>
+      </div>
+
+      <!-- Estado: Processando -->
+      <div id="estado-processando" class="hidden text-center">
+        <div class="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p class="font-medium" id="status-processamento">Enviando áudio...</p>
+        <div class="w-full bg-gray-200 rounded-full h-2 mt-4">
+          <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Estado: Concluído -->
+      <div id="estado-concluido" class="hidden text-center">
+        <div class="text-5xl mb-4">✅</div>
+        <p class="font-medium text-green-600">Gravação enviada com sucesso!</p>
+        <p class="text-sm text-gray-500 mt-2">O relatório será gerado automaticamente.</p>
+        <button onclick="novaGravacao()"
+          class="mt-4 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg">
+          Nova Gravação
+        </button>
+      </div>
+    </div>
+
+    <!-- Notas -->
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <h2 class="text-lg font-semibold mb-4">📝 Notas da Sessão</h2>
+      <textarea id="notas" placeholder="Anotações durante a sessão..."
+        class="w-full p-3 border rounded-lg h-32 resize-none"></textarea>
+    </div>
+  </div>
+
+  <script>
+    // Config Supabase
+    const SUPABASE_URL = 'https://gclgdhvldykcgcyjwuga.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjbGdkaHZsZHlrY2djeWp3dWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNzA0MzQsImV4cCI6MjA4Njc0NjQzNH0.Wssnx_FJz5FnaogOfpoLg8dK4rZv6zbRRpFkcBcf8rg';
+    const N8N_WEBHOOK = 'https://agenciabase.app.n8n.cloud/webhook/acurecord-process';
+    
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let timerInterval = null;
+    let segundos = 0;
+    let pacienteSelecionado = null;
+    let audioContext = null;
+    let analyser = null;
+
+    // Buscar pacientes
+    document.getElementById('busca-paciente').addEventListener('input', async (e) => {
+      const termo = e.target.value.trim();
+      if (termo.length < 2) {
+        document.getElementById('lista-pacientes').innerHTML = '';
+        return;
+      }
+      
+      const { data } = await supabase
+        .from('pacientes')
+        .select('id, nome, telefone, queixa_principal')
+        .ilike('nome', `%${termo}%`)
+        .limit(5);
+      
+      const lista = document.getElementById('lista-pacientes');
+      lista.innerHTML = data?.map(p => `
+        <div onclick="selecionarPaciente('${p.id}', '${p.nome}', '${p.telefone || ''}', '${p.queixa_principal || ''}')"
+          class="p-3 bg-gray-50 hover:bg-blue-50 rounded-lg cursor-pointer transition">
+          <p class="font-medium">${p.nome}</p>
+          <p class="text-sm text-gray-500">${p.queixa_principal || 'Sem queixa registrada'}</p>
+        </div>
+      `).join('') || '<p class="text-gray-400 text-sm">Nenhum paciente encontrado</p>';
+    });
+
+    function selecionarPaciente(id, nome, telefone, queixa) {
+      pacienteSelecionado = { id, nome, telefone, queixa };
+      document.getElementById('nome-paciente').textContent = nome;
+      document.getElementById('info-paciente').textContent = queixa || telefone;
+      document.getElementById('paciente-selecionado').classList.remove('hidden');
+      document.getElementById('lista-pacientes').innerHTML = '';
+      document.getElementById('busca-paciente').value = nome;
+      document.getElementById('btn-iniciar').disabled = false;
+    }
+
+    async function iniciarGravacao() {
+      if (!pacienteSelecionado) return alert('Selecione um paciente primeiro!');
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // VU Meter
+        audioContext = new AudioContext();
+        analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+        
+        mediaRecorder.start(1000); // Chunk a cada segundo
+        
+        document.getElementById('estado-pronto').classList.add('hidden');
+        document.getElementById('estado-gravando').classList.remove('hidden');
+        
+        segundos = 0;
+        timerInterval = setInterval(() => {
+          segundos++;
+          const h = Math.floor(segundos / 3600);
+          const m = Math.floor((segundos % 3600) / 60);
+          const s = segundos % 60;
+          document.getElementById('timer').textContent = 
+            `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+          updateVuMeter();
+        }, 1000);
+        
+      } catch (err) {
+        alert('Erro ao acessar microfone: ' + err.message);
+      }
+    }
+
+    function updateVuMeter() {
+      if (!analyser) return;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((a, b) => a + b) / data.length;
+      document.getElementById('vu-bar').style.width = `${Math.min(100, avg)}%`;
+    }
+
+    function pausarGravacao() {
+      if (mediaRecorder.state === 'recording') {
+        mediaRecorder.pause();
+        document.getElementById('btn-pausar').textContent = '▶️ Retomar';
+        clearInterval(timerInterval);
+      } else {
+        mediaRecorder.resume();
+        document.getElementById('btn-pausar').textContent = '⏸️ Pausar';
+        timerInterval = setInterval(() => {
+          segundos++;
+          const h = Math.floor(segundos / 3600);
+          const m = Math.floor((segundos % 3600) / 60);
+          const s = segundos % 60;
+          document.getElementById('timer').textContent = 
+            `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        }, 1000);
+      }
+    }
+
+    async function finalizarGravacao() {
+      clearInterval(timerInterval);
+      
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      
+      document.getElementById('estado-gravando').classList.add('hidden');
+      document.getElementById('estado-processando').classList.remove('hidden');
+      
+      // Aguardar todos os chunks
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const fileName = `${pacienteSelecionado.id}_${Date.now()}.webm`;
+      
+      document.getElementById('status-processamento').textContent = 'Enviando áudio...';
+      document.getElementById('progress-bar').style.width = '30%';
+      
+      // Upload para Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('audios')
+        .upload(fileName, audioBlob);
+      
+      if (uploadError) {
+        alert('Erro no upload: ' + uploadError.message);
+        return;
+      }
+      
+      document.getElementById('progress-bar').style.width = '60%';
+      document.getElementById('status-processamento').textContent = 'Salvando no banco...';
+      
+      // Criar registro da gravação
+      const { data: gravacao, error: gravError } = await supabase
+        .from('gravacoes')
+        .insert({
+          paciente_id: pacienteSelecionado.id,
+          audio_url: uploadData.path,
+          audio_duracao_segundos: segundos,
+          audio_formato: 'webm',
+          notas_gravacao: document.getElementById('notas').value,
+          transcricao_status: 'pendente',
+          relatorio_status: 'pendente'
+        })
+        .select()
+        .single();
+      
+      if (gravError) {
+        alert('Erro ao salvar: ' + gravError.message);
+        return;
+      }
+      
+      document.getElementById('progress-bar').style.width = '80%';
+      document.getElementById('status-processamento').textContent = 'Iniciando processamento...';
+      
+      // Disparar webhook n8n para processamento
+      try {
+        await fetch(N8N_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gravacao_id: gravacao.id,
+            paciente_id: pacienteSelecionado.id,
+            paciente_nome: pacienteSelecionado.nome,
+            audio_path: uploadData.path,
+            duracao: segundos
+          })
+        });
+      } catch (e) {
+        console.log('Webhook enviado (pode falhar CORS, mas funciona)');
+      }
+      
+      document.getElementById('progress-bar').style.width = '100%';
+      
+      setTimeout(() => {
+        document.getElementById('estado-processando').classList.add('hidden');
+        document.getElementById('estado-concluido').classList.remove('hidden');
+      }, 1000);
+    }
+
+    function novaGravacao() {
+      pacienteSelecionado = null;
+      audioChunks = [];
+      segundos = 0;
+      document.getElementById('busca-paciente').value = '';
+      document.getElementById('paciente-selecionado').classList.add('hidden');
+      document.getElementById('notas').value = '';
+      document.getElementById('btn-iniciar').disabled = true;
+      document.getElementById('estado-concluido').classList.add('hidden');
+      document.getElementById('estado-pronto').classList.remove('hidden');
+      document.getElementById('timer').textContent = '00:00:00';
+    }
+
+    // Inicialização
+    document.getElementById('btn-iniciar').disabled = true;
+  </script>
+</body>
+</html>

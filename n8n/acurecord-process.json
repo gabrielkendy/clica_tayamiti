@@ -1,0 +1,124 @@
+{
+  "name": "AcuRecord Process",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "acurecord-process", "responseMode": "onReceived", "responseData": "allEntries"},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 300],
+      "webhookId": "acurecord-process"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/gravacoes?id=eq.{{ $json.body.gravacao_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"transcricao_status\": \"processando\"}"
+      },
+      "name": "Marcar Processando",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [380, 300],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/storage/v1/object/public/audios/{{ $('Webhook').item.json.body.audio_path }}",
+        "options": {"response": {"response": {"fullResponse": true, "responseFormat": "file"}}}
+      },
+      "name": "Download Audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "model": "whisper-1",
+        "binaryPropertyName": "data",
+        "options": {"language": "pt", "responseFormat": "verbose_json"}
+      },
+      "name": "Whisper",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.6,
+      "position": [780, 300],
+      "credentials": {"openAiApi": {"id": "OPENAI_CREDENTIAL_ID", "name": "OpenAI"}}
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "claude-sonnet-4-20250514",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um assistente especializado em Medicina Tradicional Chinesa. Analise a transcrição de sessão de acupuntura e extraia em JSON:\n\n{\"resumo\": \"resumo em 3-5 parágrafos\", \"queixas\": {\"principal\": \"\", \"secundarias\": [], \"detalhes\": \"\"}, \"diagnostico\": {\"padrao_mtc\": \"\", \"pulso\": \"\", \"lingua\": \"\", \"observacoes\": \"\"}, \"tratamento\": {\"principio\": \"\", \"pontos\": [], \"tecnicas\": [], \"tempo_retencao\": null, \"observacoes\": \"\"}, \"evolucao\": {\"comparacao_anterior\": \"\", \"melhoras\": \"\", \"pioras\": \"\", \"observacoes\": \"\"}, \"orientacoes\": \"\", \"proximos_passos\": \"\", \"dor_pre\": null, \"dor_pos\": null, \"alertas\": \"\"}\n\nSe alguma informação não estiver presente, use null. Nunca invente dados."
+            },
+            {
+              "role": "user", 
+              "content": "=Transcrição da sessão com {{ $('Webhook').item.json.body.paciente_nome }}:\n\n{{ $json.text }}"
+            }
+          ]
+        },
+        "options": {"maxTokens": 2048}
+      },
+      "name": "Claude Relatorio",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [980, 300],
+      "credentials": {"anthropicApi": {"id": "IWAUWTSb4FSNnW12", "name": "Anthropic account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const transcricao = $('Whisper').first().json;\nconst relatorioRaw = $('Claude Relatorio').first().json;\nconst gravacaoId = $('Webhook').first().json.body.gravacao_id;\n\nlet relatorio = {};\ntry {\n  const match = (relatorioRaw.text || relatorioRaw.content || JSON.stringify(relatorioRaw)).match(/\\{[\\s\\S]*\\}/);\n  if (match) relatorio = JSON.parse(match[0]);\n} catch(e) {\n  relatorio = {resumo: relatorioRaw.text || relatorioRaw.content || 'Erro ao processar'};\n}\n\nreturn [{json: {\n  gravacao_id: gravacaoId,\n  transcricao_completa: transcricao.text,\n  transcricao_segmentos: transcricao.segments,\n  relatorio_resumo: relatorio.resumo,\n  relatorio_queixas: relatorio.queixas,\n  relatorio_diagnostico: relatorio.diagnostico,\n  relatorio_tratamento: relatorio.tratamento,\n  relatorio_evolucao: relatorio.evolucao,\n  relatorio_orientacoes: relatorio.orientacoes,\n  relatorio_proximos_passos: relatorio.proximos_passos,\n  relatorio_dor_pre: relatorio.dor_pre,\n  relatorio_dor_pos: relatorio.dor_pos,\n  relatorio_alertas: relatorio.alertas\n}}];"
+      },
+      "name": "Parse Relatorio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/gravacoes?id=eq.{{ $json.gravacao_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({transcricao_status: 'concluida', relatorio_status: 'concluido', transcricao_completa: $json.transcricao_completa, transcricao_segmentos: $json.transcricao_segmentos, relatorio_resumo: $json.relatorio_resumo, relatorio_queixas: $json.relatorio_queixas, relatorio_diagnostico: $json.relatorio_diagnostico, relatorio_tratamento: $json.relatorio_tratamento, relatorio_evolucao: $json.relatorio_evolucao, relatorio_orientacoes: $json.relatorio_orientacoes, relatorio_proximos_passos: $json.relatorio_proximos_passos, relatorio_dor_pre: $json.relatorio_dor_pre, relatorio_dor_pos: $json.relatorio_dor_pos, relatorio_alertas: $json.relatorio_alertas}) }}"
+      },
+      "name": "Salvar Relatorio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1380, 300],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "chatId": "957707348",
+        "text": "=✅ Relatório pronto!\n\nPaciente: {{ $('Webhook').item.json.body.paciente_nome }}\nDuração: {{ Math.floor($('Webhook').item.json.body.duracao / 60) }}min\n\nResumo: {{ $json.relatorio_resumo?.substring(0, 200) }}...\n\nAcesse o dashboard para revisar.",
+        "additionalFields": {}
+      },
+      "name": "Notificar Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1580, 300],
+      "credentials": {"telegramApi": {"id": "7kCDy7tdETcUqXmf", "name": "AcuBot Telegram"}}
+    }
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Marcar Processando", "type": "main", "index": 0}]]},
+    "Marcar Processando": {"main": [[{"node": "Download Audio", "type": "main", "index": 0}]]},
+    "Download Audio": {"main": [[{"node": "Whisper", "type": "main", "index": 0}]]},
+    "Whisper": {"main": [[{"node": "Claude Relatorio", "type": "main", "index": 0}]]},
+    "Claude Relatorio": {"main": [[{"node": "Parse Relatorio", "type": "main", "index": 0}]]},
+    "Parse Relatorio": {"main": [[{"node": "Salvar Relatorio", "type": "main", "index": 0}]]},
+    "Salvar Relatorio": {"main": [[{"node": "Notificar Telegram", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}
