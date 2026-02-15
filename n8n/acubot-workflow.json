@@ -1,0 +1,285 @@
+{
+  "name": "🏥 AcuBot - Clínica Tayamiti",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "acubot-telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "CRIAR_CREDENCIAL",
+          "name": "AcuBot Telegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.message.chat.id.toString(), role: 'user', content: $json.message.text, metadata: { message_id: $json.message.message_id, from: $json.message.from } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "name": "Salvar Msg User",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CRIAR_CREDENCIAL",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico?chat_id=eq.{{ $('Telegram Trigger').item.json.message.chat.id }}&order=created_at.desc&limit=10",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "Buscar Histórico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CRIAR_CREDENCIAL",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/vw_agenda_hoje",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "Buscar Agenda Hoje",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CRIAR_CREDENCIAL",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é AcuBot, assistente de IA da Clínica Tayamiti especializada em acupuntura e MTC.\n\nPROPRIETÁRIA: Elena (Dra. Elena)\n\nFUNÇÕES:\n1. Cadastrar/buscar/atualizar pacientes\n2. Gerenciar agenda (agendar, cancelar, ver horários)\n3. Registrar sessões de atendimento\n4. Consultar histórico do paciente\n5. Registrar pagamentos\n6. Gerar receituários\n\nCONTEXTO HOJE:\n{{ $('Buscar Agenda Hoje').item.json }}\n\nHISTÓRICO RECENTE:\n{{ $('Buscar Histórico').item.json }}\n\nSeja profissional, acolhedor e objetivo. Use emojis quando apropriado (📋 📅 💉 💰 ✅).\n\nQuando precisar executar ações, retorne um JSON com:\n{\n  \"action\": \"nome_da_acao\",\n  \"params\": { ... },\n  \"response\": \"mensagem para o usuário\"\n}\n\nAções disponíveis:\n- cadastrar_paciente: {nome, telefone, queixa_principal, ...}\n- buscar_paciente: {nome ou cpf}\n- agendar_sessao: {paciente_id ou nome, data_hora, tipo}\n- registrar_sessao: {paciente_id, pontos[], tecnicas[], dor_pre, dor_pos, ...}\n- registrar_pagamento: {paciente_id, valor, forma_pagamento}\n- ver_agenda: {data}\n- historico_paciente: {paciente_id ou nome}\n\nSe não precisar de ação, retorne apenas o texto da resposta."
+            },
+            {
+              "role": "user",
+              "content": "={{ $('Telegram Trigger').item.json.message.text }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokensToSample": 2048,
+          "temperature": 0.7
+        }
+      },
+      "name": "Claude AcuBot",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": {
+        "anthropicApi": {
+          "id": "USAR_EXISTENTE",
+          "name": "Anthropic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "action-check",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "{\"action\"",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ]
+        }
+      },
+      "name": "Tem Ação?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json.output;\n\ntry {\n  // Tenta extrair JSON da resposta\n  const jsonMatch = output.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    const parsed = JSON.parse(jsonMatch[0]);\n    return [{ json: parsed }];\n  }\n} catch (e) {\n  // Se não for JSON, retorna como texto\n}\n\nreturn [{ json: { response: output } }];"
+      },
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cadastrar",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "cadastrar_paciente",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "name": "Router Ações",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1500, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.response || $json.output }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Responder Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1700, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "CRIAR_CREDENCIAL",
+          "name": "AcuBot Telegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Telegram Trigger').item.json.message.chat.id.toString(), role: 'assistant', content: $json.response || $json.output }) }}"
+      },
+      "name": "Salvar Resposta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1900, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CRIAR_CREDENCIAL",
+          "name": "Supabase AcuBot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          { "node": "Salvar Msg User", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Salvar Msg User": {
+      "main": [
+        [
+          { "node": "Buscar Histórico", "type": "main", "index": 0 },
+          { "node": "Buscar Agenda Hoje", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Buscar Histórico": {
+      "main": [
+        [
+          { "node": "Claude AcuBot", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Claude AcuBot": {
+      "main": [
+        [
+          { "node": "Tem Ação?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Tem Ação?": {
+      "main": [
+        [
+          { "node": "Parse Response", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Responder Telegram", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          { "node": "Router Ações", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Router Ações": {
+      "main": [
+        [
+          { "node": "Responder Telegram", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Responder Telegram": {
+      "main": [
+        [
+          { "node": "Salvar Resposta", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

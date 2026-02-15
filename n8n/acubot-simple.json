@@ -1,0 +1,126 @@
+{
+  "name": "🏥 AcuBot MVP",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "name": "Telegram",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "webhookId": "acubot",
+      "credentials": {
+        "telegramApi": {
+          "id": "7kCDy7tdETcUqXmf",
+          "name": "AcuBot Telegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico?chat_id=eq.{{ $json.message.chat.id }}&order=created_at.desc&limit=8",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Histórico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [400, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const hist = $input.first().json || [];\nconst msg = $('Telegram').first().json.message;\n\nconst messages = [];\n\n// System\nmessages.push({\n  role: 'user',\n  content: `[SYSTEM] Você é AcuBot, assistente da Clínica Tayamiti (acupuntura). Proprietária: Elena.\\n\\nFunções: cadastrar pacientes, gerenciar agenda, registrar sessões e pagamentos.\\n\\nQuando precisar executar ação, retorne JSON: {\"action\": \"nome\", \"params\": {...}, \"msg\": \"resposta\"}\\n\\nAções: cadastrar_paciente, buscar_paciente, agendar, registrar_sessao, registrar_pagamento\\n\\nSe for conversa normal, responda diretamente.`\n});\nmessages.push({ role: 'assistant', content: 'Entendido! Sou o AcuBot. Como posso ajudar?' });\n\n// Histórico\nif (Array.isArray(hist)) {\n  hist.reverse().forEach(h => {\n    messages.push({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content });\n  });\n}\n\n// Nova mensagem\nmessages.push({ role: 'user', content: msg.text || '[mídia]' });\n\nreturn [{ json: { messages, chat_id: msg.chat.id, user_msg: msg.text } }];"
+      },
+      "name": "Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "claude-sonnet-4-20250514",
+        "messages": {
+          "values": "={{ $json.messages }}"
+        },
+        "options": {
+          "maxTokens": 1024,
+          "temperature": 0.7
+        }
+      },
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [800, 300],
+      "credentials": {
+        "anthropicApi": {
+          "id": "IWAUWTSb4FSNnW12",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst text = resp.response?.content || resp.text || resp.output || JSON.stringify(resp);\nconst chatId = $('Preparar').first().json.chat_id;\n\nlet action = null;\nlet msg = text;\n\ntry {\n  const match = text.match(/\\{[^}]+\"action\"[^}]+\\}/);\n  if (match) {\n    const parsed = JSON.parse(match[0]);\n    action = parsed.action;\n    msg = parsed.msg || text;\n  }\n} catch(e) {}\n\nreturn [{ json: { response: msg, chat_id: chatId, action } }];"
+      },
+      "name": "Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.response }}",
+        "additionalFields": {}
+      },
+      "name": "Responder",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1200, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "7kCDy7tdETcUqXmf",
+          "name": "AcuBot Telegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify([{ chat_id: String($('Preparar').first().json.chat_id), role: 'user', content: $('Preparar').first().json.user_msg }, { chat_id: String($('Preparar').first().json.chat_id), role: 'assistant', content: $json.response }]) }}"
+      },
+      "name": "Salvar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1400, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram": { "main": [[{ "node": "Histórico", "type": "main", "index": 0 }]] },
+    "Histórico": { "main": [[{ "node": "Preparar", "type": "main", "index": 0 }]] },
+    "Preparar": { "main": [[{ "node": "Claude", "type": "main", "index": 0 }]] },
+    "Claude": { "main": [[{ "node": "Parse", "type": "main", "index": 0 }]] },
+    "Parse": { "main": [[{ "node": "Responder", "type": "main", "index": 0 }]] },
+    "Responder": { "main": [[{ "node": "Salvar", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

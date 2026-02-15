@@ -1,0 +1,277 @@
+{
+  "name": "🏥 AcuBot - Clínica Tayamiti",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [180, 340],
+      "webhookId": "acubot-trigger",
+      "credentials": {
+        "telegramApi": {
+          "id": "7kCDy7tdETcUqXmf",
+          "name": "AcuBot Telegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: String($json.message.chat.id), role: 'user', content: $json.message.text || '[mídia]' }) }}"
+      },
+      "id": "save-user-msg",
+      "name": "Salvar Msg User",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [380, 340],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico?chat_id=eq.{{ $('Telegram Trigger').item.json.message.chat.id }}&order=created_at.desc&limit=10",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "get-history",
+      "name": "Buscar Histórico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [580, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/vw_agenda_hoje",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "get-agenda",
+      "name": "Agenda Hoje",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [580, 440],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const historico = $('Buscar Histórico').first().json || [];\nconst agenda = $('Agenda Hoje').first().json || [];\nconst msg = $('Telegram Trigger').first().json.message;\n\n// Formatar histórico\nconst histFormatado = Array.isArray(historico) \n  ? historico.slice(0, 5).reverse().map(h => `${h.role}: ${h.content}`).join('\\n')\n  : '';\n\n// Formatar agenda\nconst agendaFormatada = Array.isArray(agenda) && agenda.length > 0\n  ? agenda.map(a => `- ${new Date(a.data_hora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})} | ${a.paciente_nome || a.nome_paciente || 'Novo'} | ${a.tipo}`).join('\\n')\n  : 'Sem agendamentos hoje';\n\nreturn [{\n  json: {\n    mensagem: msg.text || '[mídia]',\n    chat_id: msg.chat.id,\n    user_name: msg.from.first_name,\n    historico: histFormatado,\n    agenda_hoje: agendaFormatada\n  }\n}];"
+      },
+      "id": "merge-context",
+      "name": "Montar Contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 340]
+    },
+    {
+      "parameters": {
+        "modelId": { "__rl": true, "mode": "list", "value": "claude-sonnet-4-20250514" },
+        "messages": {
+          "values": [
+            {
+              "content": "=Você é AcuBot, assistente de IA da Clínica Tayamiti, especializada em acupuntura e Medicina Tradicional Chinesa (MTC).\n\n## PROPRIETÁRIA\nElena (Dra. Elena) - Acupunturista\n\n## SUAS FUNÇÕES\n1. 📋 Cadastrar e gerenciar pacientes\n2. 📅 Gerenciar agenda (agendar, cancelar, ver horários)\n3. 💉 Registrar sessões de atendimento\n4. 🔍 Consultar histórico do paciente antes de atendimentos\n5. 💰 Registrar pagamentos\n6. 📝 Gerar receituários\n\n## AGENDA DE HOJE\n{{ $json.agenda_hoje }}\n\n## HISTÓRICO RECENTE\n{{ $json.historico }}\n\n## REGRAS\n- Seja profissional, acolhedor e objetivo\n- Use emojis apropriados\n- Confirme ações importantes antes de executar\n- Quando precisar executar ações no banco, retorne JSON:\n\n```json\n{\"action\": \"nome_acao\", \"params\": {...}, \"response\": \"mensagem para usuário\"}\n```\n\n## AÇÕES DISPONÍVEIS\n- cadastrar_paciente: {nome, telefone, email?, queixa_principal?}\n- buscar_paciente: {termo} (busca por nome)\n- agendar: {paciente_nome, data_hora, tipo?, observacoes?}\n- cancelar_agendamento: {agendamento_id}\n- registrar_sessao: {paciente_nome, pontos[], dor_pre?, dor_pos?, observacoes?}\n- registrar_pagamento: {paciente_nome, valor, forma} (forma: pix, dinheiro, cartao)\n- historico: {paciente_nome}\n- resumo_dia: {}\n\nSe for apenas conversa, responda normalmente sem JSON."
+            },
+            {
+              "content": "={{ $json.mensagem }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokensToSample": 1500,
+          "temperature": 0.7
+        }
+      },
+      "id": "claude",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [980, 340],
+      "credentials": {
+        "anthropicApi": {
+          "id": "IWAUWTSb4FSNnW12",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json.response?.content || $input.first().json.text || $input.first().json.output || '';\nconst chatId = $('Montar Contexto').first().json.chat_id;\n\n// Tenta extrair JSON da resposta\nlet action = null;\nlet response = output;\n\ntry {\n  const jsonMatch = output.match(/```json\\s*([\\s\\S]*?)```/) || output.match(/(\\{[\\s\\S]*\"action\"[\\s\\S]*\\})/);\n  if (jsonMatch) {\n    const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);\n    if (parsed.action) {\n      action = parsed.action;\n      response = parsed.response || output;\n      return [{ json: { ...parsed, chat_id: chatId, has_action: true } }];\n    }\n  }\n} catch (e) {\n  // Não é JSON, usa texto puro\n}\n\nreturn [{ json: { response: output, chat_id: chatId, has_action: false } }];"
+      },
+      "id": "parse",
+      "name": "Parse Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.has_action }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-action",
+      "name": "Tem Ação?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1380, 340]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "outputKey": "cadastrar_paciente", "conditions": { "options": { "caseSensitive": false }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "cadastrar_paciente", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "buscar_paciente", "conditions": { "options": { "caseSensitive": false }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "buscar_paciente", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "agendar", "conditions": { "options": { "caseSensitive": false }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "agendar", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "registrar_sessao", "conditions": { "options": { "caseSensitive": false }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "registrar_sessao", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "registrar_pagamento", "conditions": { "options": { "caseSensitive": false }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "registrar_pagamento", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "historico", "conditions": { "options": { "caseSensitive": false }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "historico", "operator": { "type": "string", "operation": "equals" } }] } }
+          ]
+        },
+        "fallbackOutput": "none"
+      },
+      "id": "router",
+      "name": "Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1580, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/pacientes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.params) }}",
+        "options": { "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "cadastrar",
+      "name": "Cadastrar Paciente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1800, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/pacientes?nome=ilike.*{{ encodeURIComponent($json.params.termo || '') }}*&limit=5",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "buscar",
+      "name": "Buscar Paciente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1800, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parse Resposta').item.json.chat_id }}",
+        "text": "={{ $('Parse Resposta').item.json.response || $json.response }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "telegram-reply",
+      "name": "Responder",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [2100, 340],
+      "credentials": {
+        "telegramApi": {
+          "id": "7kCDy7tdETcUqXmf",
+          "name": "AcuBot Telegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: String($('Parse Resposta').item.json.chat_id), role: 'assistant', content: $('Parse Resposta').item.json.response || '' }) }}"
+      },
+      "id": "save-assistant",
+      "name": "Salvar Resposta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2300, 340],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OKPiO5p00C3PUDNT",
+          "name": "Supabase AcuBot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": { "main": [[{ "node": "Salvar Msg User", "type": "main", "index": 0 }]] },
+    "Salvar Msg User": { "main": [[{ "node": "Buscar Histórico", "type": "main", "index": 0 }, { "node": "Agenda Hoje", "type": "main", "index": 0 }]] },
+    "Buscar Histórico": { "main": [[{ "node": "Montar Contexto", "type": "main", "index": 0 }]] },
+    "Agenda Hoje": { "main": [[{ "node": "Montar Contexto", "type": "main", "index": 0 }]] },
+    "Montar Contexto": { "main": [[{ "node": "Claude", "type": "main", "index": 0 }]] },
+    "Claude": { "main": [[{ "node": "Parse Resposta", "type": "main", "index": 0 }]] },
+    "Parse Resposta": { "main": [[{ "node": "Tem Ação?", "type": "main", "index": 0 }]] },
+    "Tem Ação?": { "main": [[{ "node": "Router", "type": "main", "index": 0 }], [{ "node": "Responder", "type": "main", "index": 0 }]] },
+    "Router": { 
+      "main": [
+        [{ "node": "Cadastrar Paciente", "type": "main", "index": 0 }],
+        [{ "node": "Buscar Paciente", "type": "main", "index": 0 }],
+        [{ "node": "Responder", "type": "main", "index": 0 }],
+        [{ "node": "Responder", "type": "main", "index": 0 }],
+        [{ "node": "Responder", "type": "main", "index": 0 }],
+        [{ "node": "Responder", "type": "main", "index": 0 }]
+      ]
+    },
+    "Cadastrar Paciente": { "main": [[{ "node": "Responder", "type": "main", "index": 0 }]] },
+    "Buscar Paciente": { "main": [[{ "node": "Responder", "type": "main", "index": 0 }]] },
+    "Responder": { "main": [[{ "node": "Salvar Resposta", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [{ "name": "AcuClinic" }]
+}
