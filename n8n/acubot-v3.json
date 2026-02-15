@@ -1,0 +1,112 @@
+{
+  "name": "AcuBot v3",
+  "nodes": [
+    {
+      "parameters": {"updates": ["message"]},
+      "name": "Telegram",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "webhookId": "acubot-v3",
+      "credentials": {"telegramApi": {"id": "7kCDy7tdETcUqXmf", "name": "AcuBot Telegram"}}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"chat_id\": \"{{ $json.message.chat.id }}\", \"role\": \"user\", \"content\": \"{{ ($json.message.text || '').replace(/\"/g, '\\\\\"') }}\"}"
+      },
+      "name": "Salvar User",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [400, 300],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico?chat_id=eq.{{ $('Telegram').item.json.message.chat.id }}&order=created_at.desc&limit=6",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Historico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 300],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/vw_agenda_hoje",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Agenda",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 480],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "x-api-key", "value": "={{$credentials.httpHeaderAuth.value}}"},
+          {"name": "anthropic-version", "value": "2023-06-01"},
+          {"name": "content-type", "value": "application/json"}
+        ]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"model\": \"claude-sonnet-4-20250514\", \"max_tokens\": 1024, \"messages\": [{\"role\": \"user\", \"content\": \"Voce e AcuBot, assistente da Clinica Tayamiti (acupuntura). Proprietaria: Elena.\\n\\nFuncoes: cadastrar pacientes, gerenciar agenda, registrar sessoes/pagamentos. Seja profissional e use emojis.\\n\\nMensagem do usuario: {{ ($('Telegram').item.json.message.text || '').replace(/\"/g, '\\\\\"').replace(/\\n/g, ' ') }}\"}]}"
+      },
+      "name": "Claude Direct",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 380],
+      "credentials": {"httpHeaderAuth": {"id": "ANTHROPIC_HEADER", "name": "Anthropic Header"}}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram').item.json.message.chat.id }}",
+        "text": "={{ $json.content?.[0]?.text || $json.error?.message || 'Desculpe, tive um problema.' }}",
+        "additionalFields": {}
+      },
+      "name": "Responder",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1000, 380],
+      "credentials": {"telegramApi": {"id": "7kCDy7tdETcUqXmf", "name": "AcuBot Telegram"}}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/chat_historico",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"chat_id\": \"{{ $('Telegram').item.json.message.chat.id }}\", \"role\": \"assistant\", \"content\": \"{{ ($json.content?.[0]?.text || '').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\"}"
+      },
+      "name": "Salvar Bot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1200, 380],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    }
+  ],
+  "connections": {
+    "Telegram": {"main": [[{"node": "Salvar User", "type": "main", "index": 0}]]},
+    "Salvar User": {"main": [[{"node": "Historico", "type": "main", "index": 0}]]},
+    "Historico": {"main": [[{"node": "Claude Direct", "type": "main", "index": 0}]]},
+    "Claude Direct": {"main": [[{"node": "Responder", "type": "main", "index": 0}]]},
+    "Responder": {"main": [[{"node": "Salvar Bot", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}

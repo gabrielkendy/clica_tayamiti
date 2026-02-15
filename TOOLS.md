@@ -25,9 +25,9 @@
 ## n8n Workflows
 
 ### Ativos
-- **AcuBot Clinica Tayamiti** - ID: OWvKWljjPDsc69T4 ✅
-  - Telegram → Salvar → Histórico → Claude → Responder → Salvar
-  - Webhook: https://agenciabase.app.n8n.cloud/webhook/acubot-full/webhook
+- **AcuBot Final** - ID: kNY7qRHUTiHdmRFR ✅
+  - Telegram → Agenda → Prep → Claude → Responder
+  - Webhook: https://agenciabase.app.n8n.cloud/webhook/acubot-final/webhook
 
 - **AcuBot Actions** - ID: L8j83XuWCdxLtDtm ✅
   - Webhook para ações: cadastrar, buscar, agendar, sessão, pagamento
