@@ -1,0 +1,42 @@
+{
+  "name": "AcuBot Minimal",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "name": "Telegram",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "webhookId": "acubot-min",
+      "credentials": {
+        "telegramApi": {
+          "id": "7kCDy7tdETcUqXmf",
+          "name": "AcuBot Telegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "Olá! Sou o AcuBot da Clínica Tayamiti. Recebi sua mensagem: {{ $json.message.text }}",
+        "additionalFields": {}
+      },
+      "name": "Responder",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [400, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "7kCDy7tdETcUqXmf",
+          "name": "AcuBot Telegram"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram": { "main": [[{ "node": "Responder", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

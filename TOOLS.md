@@ -23,15 +23,25 @@
 - `fotos` - Fotos de pacientes (opcional)
 
 ## n8n Workflows
-- **🏥 AcuBot MVP** - ID: rTGfrlnxW6MVL871 (ATIVO ✅)
-  - Telegram → Histórico → Claude → Responder → Salvar
-  - URL: https://agenciabase.app.n8n.cloud/workflow/rTGfrlnxW6MVL871
+
+### Ativos
+- **AcuBot Clinica Tayamiti** - ID: OWvKWljjPDsc69T4 ✅
+  - Telegram → Salvar → Histórico → Claude → Responder → Salvar
+  - Webhook: https://agenciabase.app.n8n.cloud/webhook/acubot-full/webhook
+
+- **AcuBot Actions** - ID: L8j83XuWCdxLtDtm ✅
+  - Webhook para ações: cadastrar, buscar, agendar, sessão, pagamento
+  - URL: https://agenciabase.app.n8n.cloud/webhook/acubot-action
 
 ### Credenciais n8n
 - **AcuBot Telegram** - ID: 7kCDy7tdETcUqXmf
 - **Supabase AcuBot** - ID: OKPiO5p00C3PUDNT
 
-## Workflows Pendentes (a criar)
+### Workflows Inativos
+- rTGfrlnxW6MVL871 (MVP antigo)
+- FI71DE6KRuDl36iz (minimal)
+
+## Workflows Pendentes
 - Processamento AcuRecord (áudio → transcrição → relatório)
 - Geração de PDFs
 - Lembretes de agenda

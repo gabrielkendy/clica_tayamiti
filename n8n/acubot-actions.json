@@ -1,0 +1,136 @@
+{
+  "name": "AcuBot Actions",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "acubot-action", "responseMode": "responseNode"},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 300],
+      "webhookId": "acubot-action"
+    },
+    {
+      "parameters": {
+        "rules": {"values": [
+          {"outputKey": "cadastrar_paciente", "conditions": {"conditions": [{"leftValue": "={{ $json.body.action }}", "rightValue": "cadastrar_paciente", "operator": {"type": "string", "operation": "equals"}}]}},
+          {"outputKey": "buscar_paciente", "conditions": {"conditions": [{"leftValue": "={{ $json.body.action }}", "rightValue": "buscar_paciente", "operator": {"type": "string", "operation": "equals"}}]}},
+          {"outputKey": "agendar", "conditions": {"conditions": [{"leftValue": "={{ $json.body.action }}", "rightValue": "agendar", "operator": {"type": "string", "operation": "equals"}}]}},
+          {"outputKey": "registrar_sessao", "conditions": {"conditions": [{"leftValue": "={{ $json.body.action }}", "rightValue": "registrar_sessao", "operator": {"type": "string", "operation": "equals"}}]}},
+          {"outputKey": "registrar_pagamento", "conditions": {"conditions": [{"leftValue": "={{ $json.body.action }}", "rightValue": "registrar_pagamento", "operator": {"type": "string", "operation": "equals"}}]}}
+        ]}
+      },
+      "name": "Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/pacientes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Prefer", "value": "return=representation"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body.params) }}"
+      },
+      "name": "Cadastrar Paciente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 100],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/pacientes?or=(nome.ilike.*{{ encodeURIComponent($json.body.params.termo) }}*,telefone.ilike.*{{ encodeURIComponent($json.body.params.termo) }}*)&limit=5",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Buscar Paciente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 220],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/agendamentos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Prefer", "value": "return=representation"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body.params) }}"
+      },
+      "name": "Agendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 340],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/sessoes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Prefer", "value": "return=representation"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body.params) }}"
+      },
+      "name": "Registrar Sessao",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 460],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gclgdhvldykcgcyjwuga.supabase.co/rest/v1/pagamentos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Prefer", "value": "return=representation"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body.params) }}"
+      },
+      "name": "Registrar Pagamento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 580],
+      "credentials": {"httpHeaderAuth": {"id": "OKPiO5p00C3PUDNT", "name": "Supabase AcuBot"}}
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ JSON.stringify({success: true, data: $json}) }}"},
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Router", "type": "main", "index": 0}]]},
+    "Router": {"main": [
+      [{"node": "Cadastrar Paciente", "type": "main", "index": 0}],
+      [{"node": "Buscar Paciente", "type": "main", "index": 0}],
+      [{"node": "Agendar", "type": "main", "index": 0}],
+      [{"node": "Registrar Sessao", "type": "main", "index": 0}],
+      [{"node": "Registrar Pagamento", "type": "main", "index": 0}]
+    ]},
+    "Cadastrar Paciente": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Buscar Paciente": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Agendar": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Registrar Sessao": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Registrar Pagamento": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}
