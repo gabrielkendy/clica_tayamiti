@@ -41,7 +41,20 @@
 - rTGfrlnxW6MVL871 (MVP antigo)
 - FI71DE6KRuDl36iz (minimal)
 
+## Dashboard Web
+- **URL Produção:** https://dashboard-swart-nine-86.vercel.app
+- **Vercel Project:** kps-projects-b5c26735/dashboard
+- **Stack:** Next.js 14 + Tailwind + Supabase
+
+### Páginas
+- / (Dashboard - resumo do dia)
+- /pacientes (Lista e busca)
+- /agenda (Calendário semanal)
+- /gravacoes (Histórico de gravações)
+- /gravar (AcuRecord - gravação de sessões)
+- /pagamentos (Histórico financeiro)
+
 ## Workflows Pendentes
-- Processamento AcuRecord (áudio → transcrição → relatório)
-- Geração de PDFs
+- Geração de PDFs (receituários)
 - Lembretes de agenda
+- Processamento AcuRecord (precisa OpenAI key para Whisper)
